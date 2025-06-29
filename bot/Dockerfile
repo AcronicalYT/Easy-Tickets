@@ -20,4 +20,4 @@ COPY . .
 # ENV DISCORD_BOT_TOKEN=[your_bot_token_here]
 
 # Start the bot
-CMD ["node", "bot.js"]
+CMD ["node", "index.js"]
