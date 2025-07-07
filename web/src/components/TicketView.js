@@ -1,7 +1,32 @@
 import { useState, useEffect, useRef } from 'react';
 import { collection, query, orderBy, onSnapshot, addDoc, serverTimestamp, doc, updateDoc, arrayUnion, arrayRemove, getDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
-import { ArrowLeft, Send, CheckCircle, Lock, Unlock, Tag, Plus, X, User, ShieldAlert, ChevronDown, Undo2, AtSign } from 'lucide-react';
+import { ArrowLeft, Send, CheckCircle, Lock, Unlock, Tag, Plus, X, User, ShieldAlert, ChevronDown, Undo2, AtSign, Paperclip, Info } from 'lucide-react';
+
+const parseMessageContent = (content) => {
+    if (!content) return null;
+    const emojiRegex = /<a?:(\w+):(\d+)>/g;
+    const parts = [];
+    let lastIndex = 0;
+    let match;
+
+    while ((match = emojiRegex.exec(content)) !== null) {
+        if (match.index > lastIndex) {
+            parts.push(content.substring(lastIndex, match.index));
+        }
+        const [fullMatch, name, id] = match;
+        const isAnimated = fullMatch.startsWith('<a:');
+        const url = `https://cdn.discordapp.com/emojis/${id}.${isAnimated ? 'gif' : 'png'}`;
+        parts.push(<img key={match.index} src={url} alt={`:${name}:`} className="inline-block h-6 w-6 align-middle" />);
+        lastIndex = emojiRegex.lastIndex;
+    }
+
+    if (lastIndex < content.length) {
+        parts.push(content.substring(lastIndex));
+    }
+
+    return parts;
+};
 
 export default function TicketView({ ticket, onBack, user, staffMembers }) {
     const [messages, setMessages] = useState([]);
@@ -13,22 +38,6 @@ export default function TicketView({ ticket, onBack, user, staffMembers }) {
     const [shouldPing, setShouldPing] = useState(false);
     const [userPrefs, setUserPrefs] = useState({ staffBubbleColor: '#5865F2', staffTextColor: '#FFFFFF' });
 
-    // Mark ticket as read when it's viewed
-    useEffect(() => {
-        const markAsRead = async () => {
-            if (ticket.id && ticket.isRead === false) {
-                const ticketDocRef = doc(db, 'tickets', ticket.id);
-                try {
-                    await updateDoc(ticketDocRef, { isRead: true });
-                } catch(error) {
-                    console.error("Error marking ticket as read:", error);
-                }
-            }
-        };
-        markAsRead();
-    }, [ticket.id, ticket.isRead]);
-
-    // Fetch user preferences when the component mounts
     useEffect(() => {
         const fetchPrefs = async () => {
             if (user?.id) {
@@ -44,6 +53,17 @@ export default function TicketView({ ticket, onBack, user, staffMembers }) {
     }, [user]);
 
     useEffect(() => {
+        const markAsRead = async () => {
+            if (ticket.id && ticket.isRead === false) {
+                const ticketDocRef = doc(db, 'tickets', ticket.id);
+                try {
+                    await updateDoc(ticketDocRef, { isRead: true });
+                } catch(error) {
+                    console.error("Error marking ticket as read:", error);
+                }
+            }
+        };
+        markAsRead();
         setLocalTicket(ticket);
     }, [ticket]);
 
@@ -180,7 +200,17 @@ export default function TicketView({ ticket, onBack, user, staffMembers }) {
                 <div className="flex flex-col flex-grow">
                     <div className="flex-grow bg-neutral-900/50 rounded-lg p-4 overflow-y-auto mb-4 border border-neutral-800">
                         {messages.map((msg, index) => {
-                            const showAuthor = index === 0 || messages[index - 1].authorId !== msg.authorId;
+                            if (msg.type === 'event') {
+                                return (
+                                    <div key={msg.id} className="flex items-center justify-center my-4">
+                                        <div className="text-xs text-neutral-500 italic flex items-center gap-2">
+                                            <Info className="h-3 w-3"/> {msg.text}
+                                        </div>
+                                    </div>
+                                );
+                            }
+
+                            const showAuthor = index === 0 || messages[index - 1].authorId !== msg.authorId || messages[index - 1].type === 'event';
                             return (
                                 <div key={msg.id} className={`flex items-start ${msg.isStaff ? 'justify-end' : 'justify-start'} ${showAuthor ? 'mt-4' : 'mt-1'}`}>
                                     {showAuthor && !msg.isStaff && (
@@ -190,9 +220,31 @@ export default function TicketView({ ticket, onBack, user, staffMembers }) {
 
                                     <div className={`flex flex-col w-full max-w-xl ${msg.isStaff ? 'items-end' : 'items-start'}`}>
                                         {showAuthor && <p className={`font-semibold text-sm mb-1 ${msg.isStaff ? 'text-right mr-3' : 'text-left'}`}>{msg.authorUsername}</p>}
-                                        <div className="p-3 rounded-lg" style={{ backgroundColor: msg.isStaff ? userPrefs.staffBubbleColor : '#27272a' }}>
-                                            <p className="whitespace-pre-wrap" style={{ color: msg.isStaff ? userPrefs.staffTextColor : '#d4d4d8' }}>{msg.content}</p>
-                                        </div>
+
+                                        {msg.content && (
+                                            <div className="p-3 rounded-lg" style={{ backgroundColor: msg.isStaff ? userPrefs.staffBubbleColor : '#27272a' }}>
+                                                <p className="whitespace-pre-wrap leading-relaxed" style={{ color: msg.isStaff ? userPrefs.staffTextColor : '#d4d4d8' }}>
+                                                    {msg.pingUser && <span className="inline-flex items-center bg-yellow-500/20 text-yellow-400 rounded-full px-2 py-0.5 text-xs font-bold mr-2"><AtSign className="h-3 w-3 mr-1"/> PINGED</span>}
+                                                    {parseMessageContent(msg.content)}
+                                                </p>
+                                            </div>
+                                        )}
+
+                                        {msg.attachments && msg.attachments.map((att, i) => (
+                                            att.contentType?.startsWith('image/') ? (
+                                                <img key={i} src={att.url} alt={att.name} className="max-w-xs rounded-lg mt-2" />
+                                            ) : (
+                                                <a key={i} href={att.url} target="_blank" rel="noopener noreferrer" className="mt-2 p-2 bg-neutral-700 rounded-md hover:bg-neutral-600 transition-colors flex items-center">
+                                                    <Paperclip className="h-4 w-4 mr-2" />
+                                                    <span className="text-sm font-medium">{att.name}</span>
+                                                </a>
+                                            )
+                                        ))}
+
+                                        {msg.stickers && msg.stickers.map((stickerUrl, i) => (
+                                            <img key={i} src={stickerUrl} alt="Sticker" className="w-32 h-32 mt-2" />
+                                        ))}
+
                                     </div>
 
                                     {showAuthor && msg.isStaff && (
