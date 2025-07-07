@@ -211,6 +211,7 @@ export async function getServerSideProps(context) {
     const guildsToCheckRoles = [];
     const authorizedGuilds = userGuilds.filter(guild => {
         if (!serverConfigs.has(guild.id)) return false;
+        if (guild.permissions && (BigInt(guild.permissions) & BigInt(0x8)) === BigInt(0x8)) return true;
         if (guild.owner) return true;
         guildsToCheckRoles.push(guild);
         return false;

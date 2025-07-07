@@ -43,7 +43,7 @@ export default function Sidebar({ user, authorizedGuilds, selectedServer, setSel
                     <UserIcon className="h-4 w-4 mr-2"/>
                     My Preferences
                 </Link>
-                {selectedServer && selectedServer.owner && (
+                {selectedServer && (selectedServer.owner || (selectedServer.permissions && (BigInt(selectedServer.permissions) & BigInt(0x8)) === BigInt(0x8))) && (
                     <Link href={`/dashboard/settings?serverId=${selectedServer.id}`} className="flex items-center w-full p-2 rounded-md hover:bg-neutral-800/50 text-neutral-400 hover:text-neutral-200 transition-colors">
                         <Settings className="h-4 w-4 mr-2"/>
                         Server Settings

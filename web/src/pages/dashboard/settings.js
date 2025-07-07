@@ -6,7 +6,7 @@ import Link from 'next/link';
 import { ArrowLeft, Save, Loader2, X, ChevronDown } from 'lucide-react';
 import { getServerRoles } from '../api/get-roles';
 
-export default function SettingsPage({ serverId, initialAccessRoles, serverRoles, isOwner, serverName }) {
+export default function SettingsPage({ serverId, initialAccessRoles, serverRoles, isOwner, hasAdminPermissions, serverName }) {
     const [accessRoles, setAccessRoles] =useState(initialAccessRoles);
     const [isSaving, setIsSaving] = useState(false);
     const [saveMessage, setSaveMessage] = useState('');
@@ -26,7 +26,7 @@ export default function SettingsPage({ serverId, initialAccessRoles, serverRoles
     }, [dropdownRef]);
 
 
-    if (!isOwner) {
+    if (!isOwner && !hasAdminPermissions) {
         return (
             <div className="flex flex-col items-center justify-center min-h-screen bg-neutral-950 text-neutral-200">
                 <h1 className="text-3xl font-bold text-red-500">Access Denied</h1>
@@ -184,6 +184,17 @@ export async function getServerSideProps(context) {
         console.error("Failed to get server roles in settings page:", error.message);
     }
 
+    const memberResponse = await fetch(
+        `https://discord.com/api/v10/guilds/${serverId}/members/${session.user.id}`,
+        { headers: { Authorization: `Bot ${process.env.DISCORD_BOT_TOKEN}` } }
+    );
+    if (!memberResponse.ok) return { notFound: true };
+    const member = await memberResponse.json();
+    const adminRoles = serverRoles.filter(
+        role => (BigInt(role.permissions) & 0x8n) !== 0n
+    ).map(role => role.id);
+    const hasAdminPermissions = member.roles.some(roleId => adminRoles.includes(roleId));
+
     const serverDocRef = doc(db, 'servers', serverId);
     const serverDocSnap = await getDoc(serverDocRef);
     const initialAccessRoles = serverDocSnap.exists() ? serverDocSnap.data().accessRoles : [];
@@ -194,6 +205,7 @@ export async function getServerSideProps(context) {
             initialAccessRoles,
             serverRoles,
             isOwner,
+            hasAdminPermissions,
             serverName: guildDetails.name
         },
     };
