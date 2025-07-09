@@ -3,22 +3,37 @@ import { collection, query, orderBy, onSnapshot, addDoc, serverTimestamp, doc, u
 import { db } from '@/lib/firebase';
 import { ArrowLeft, Send, CheckCircle, Lock, Unlock, Tag, Plus, X, User, ShieldAlert, ChevronDown, Undo2, AtSign, Paperclip, Info } from 'lucide-react';
 
-const parseMessageContent = (content) => {
+const parseMessageContent = (content, allMembers = {}, channels = {}) => {
     if (!content) return null;
-    const emojiRegex = /<a?:(\w+):(\d+)>/g;
+
+    const mentionRegex = /<(@|#|a?:[\w~]+:)(\d+)>/g;
     const parts = [];
     let lastIndex = 0;
     let match;
 
-    while ((match = emojiRegex.exec(content)) !== null) {
+    while ((match = mentionRegex.exec(content)) !== null) {
         if (match.index > lastIndex) {
             parts.push(content.substring(lastIndex, match.index));
         }
-        const [fullMatch, name, id] = match;
-        const isAnimated = fullMatch.startsWith('<a:');
-        const url = `https://cdn.discordapp.com/emojis/${id}.${isAnimated ? 'gif' : 'png'}`;
-        parts.push(<img key={match.index} src={url} alt={`:${name}:`} className="inline-block h-6 w-6 align-middle" />);
-        lastIndex = emojiRegex.lastIndex;
+
+        const [fullMatch, type, id] = match;
+        let element = fullMatch;
+
+        if (type === '@') {
+            const username = allMembers[id];
+            element = <span key={match.index} className="bg-indigo-500/20 text-indigo-300 px-1 rounded">@{username || 'unknown-user'}</span>;
+        } else if (type === '#') {
+            const channelName = channels[id];
+            element = <span key={match.index} className="bg-neutral-600/50 text-neutral-300 px-1 rounded">#{channelName || 'unknown-channel'}</span>;
+        } else { // Emoji
+            const isAnimated = type.startsWith('a:');
+            const emojiName = type.replace(/a?:|:/g, '');
+            const url = `https://cdn.discordapp.com/emojis/${id}.${isAnimated ? 'gif' : 'png'}`;
+            element = <img key={match.index} src={url} alt={`:${emojiName}:`} className="inline-block h-6 w-6 align-middle" />;
+        }
+
+        parts.push(element);
+        lastIndex = mentionRegex.lastIndex;
     }
 
     if (lastIndex < content.length) {
@@ -28,7 +43,7 @@ const parseMessageContent = (content) => {
     return parts;
 };
 
-export default function TicketView({ ticket, onBack, user, staffMembers }) {
+export default function TicketView({ ticket, onBack, user, serverData }) {
     const [messages, setMessages] = useState([]);
     const [replyContent, setReplyContent] = useState('');
     const [loadingMessages, setLoadingMessages] = useState(true);
@@ -37,6 +52,8 @@ export default function TicketView({ ticket, onBack, user, staffMembers }) {
     const [newTag, setNewTag] = useState('');
     const [shouldPing, setShouldPing] = useState(false);
     const [userPrefs, setUserPrefs] = useState({ staffBubbleColor: '#5865F2', staffTextColor: '#FFFFFF' });
+
+    const { staffMembers, allMembers, channels } = serverData;
 
     useEffect(() => {
         const fetchPrefs = async () => {
@@ -225,7 +242,7 @@ export default function TicketView({ ticket, onBack, user, staffMembers }) {
                                             <div className="p-3 rounded-lg" style={{ backgroundColor: msg.isStaff ? userPrefs.staffBubbleColor : '#27272a' }}>
                                                 <p className="whitespace-pre-wrap leading-relaxed" style={{ color: msg.isStaff ? userPrefs.staffTextColor : '#d4d4d8' }}>
                                                     {msg.pingUser && <span className="inline-flex items-center bg-yellow-500/20 text-yellow-400 rounded-full px-2 py-0.5 text-xs font-bold mr-2"><AtSign className="h-3 w-3 mr-1"/> PINGED</span>}
-                                                    {parseMessageContent(msg.content)}
+                                                    {parseMessageContent(msg.content, allMembers, channels)}
                                                 </p>
                                             </div>
                                         )}

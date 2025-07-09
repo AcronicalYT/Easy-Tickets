@@ -13,10 +13,9 @@ export default function Sidebar({ user, authorizedGuilds, selectedServer, setSel
 
     return (
         <>
-            <div className="flex flex-col items-center mb-8 px-2">
+            <div className="flex items-center mb-8 px-2">
                 <MessageSquare className="h-8 w-8 text-indigo-400" />
-                <h1 className="text-xl font-bold ml-2">Easy Tickets</h1>
-                <h3 className="text-sm text-neutral-500 ml-2">By Acronical</h3>
+                <h1 className="text-xl font-bold ml-2">Ticket Panel</h1>
             </div>
 
             <nav className="flex-grow space-y-2">
@@ -43,7 +42,7 @@ export default function Sidebar({ user, authorizedGuilds, selectedServer, setSel
                     <UserIcon className="h-4 w-4 mr-2"/>
                     My Preferences
                 </Link>
-                {selectedServer && (selectedServer.owner || (selectedServer.permissions && (BigInt(selectedServer.permissions) & BigInt(0x8)) === BigInt(0x8))) && (
+                {selectedServer && selectedServer.owner && (
                     <Link href={`/dashboard/settings?serverId=${selectedServer.id}`} className="flex items-center w-full p-2 rounded-md hover:bg-neutral-800/50 text-neutral-400 hover:text-neutral-200 transition-colors">
                         <Settings className="h-4 w-4 mr-2"/>
                         Server Settings
@@ -54,7 +53,7 @@ export default function Sidebar({ user, authorizedGuilds, selectedServer, setSel
                     <div className="flex-grow truncate">
                         <p className="font-bold text-sm">{user.name}</p>
                     </div>
-                    <button onClick={onSignOut} className="ml-2 p-2 rounded-md hover:bg-neutral-700 text-neutral-400 hover:text-red-200 transition-colors">
+                    <button onClick={onSignOut} className="ml-2 p-2 rounded-md hover:bg-neutral-700 text-neutral-400 hover:text-neutral-200 transition-colors">
                         <LogOut className="h-4 w-4"/>
                     </button>
                 </div>

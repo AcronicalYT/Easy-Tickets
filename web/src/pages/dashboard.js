@@ -2,9 +2,10 @@ import { useState, useEffect, useMemo } from 'react';
 import { getSession, signOut } from 'next-auth/react';
 import { collection, query, where, onSnapshot, getDocsFromServer, orderBy, doc, getDoc, getDocs } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
-import { LogOut, Settings, Loader2, MessageSquare, Server, Search, User as UserIcon, Menu, X as CloseIcon } from 'lucide-react';
+import { LogOut, Settings, Loader2, MessageSquare, Server, Search, User as UserIcon, Menu } from 'lucide-react';
 import TicketView from '@/components/TicketView';
 import Sidebar from '@/components/Sidebar';
+import Link from 'next/link';
 
 export default function Dashboard({ user, authorizedGuilds }) {
     const [selectedServer, setSelectedServer] = useState(null);
@@ -12,14 +13,14 @@ export default function Dashboard({ user, authorizedGuilds }) {
     const [loadingTickets, setLoadingTickets] = useState(false);
     const [selectedTicket, setSelectedTicket] = useState(null);
     const [activeFilter, setActiveFilter] = useState('open');
-    const [staffMembers, setStaffMembers] = useState([]);
+    const [serverData, setServerData] = useState({ staffMembers: [], allMembers: {}, channels: {} });
     const [searchTerm, setSearchTerm] = useState('');
     const [sidebarOpen, setSidebarOpen] = useState(false);
 
     useEffect(() => {
         if (!selectedServer) {
             setTickets([]);
-            setStaffMembers([]);
+            setServerData({ staffMembers: [], allMembers: {}, channels: {} });
             return;
         }
         setSelectedTicket(null);
@@ -28,44 +29,34 @@ export default function Dashboard({ user, authorizedGuilds }) {
         setLoadingTickets(true);
         const ticketsCollectionRef = collection(db, 'tickets');
 
-        const queryConstraints = [
-            where('serverId', '==', selectedServer.id),
-        ];
+        const queryConstraints = [where('serverId', '==', selectedServer.id), orderBy('createdAt', 'desc')];
 
         if (activeFilter === 'assigned_to_me') {
-            queryConstraints.push(where('status', '==', 'open'));
-            queryConstraints.push(where('assignedTo', '==', user.id));
+            queryConstraints.push(where('status', '==', 'open'), where('assignedTo', '==', user.id));
         } else if (activeFilter === 'unassigned') {
-            queryConstraints.push(where('status', '==', 'open'));
-            queryConstraints.push(where('assignedTo', '==', null));
+            queryConstraints.push(where('status', '==', 'open'), where('assignedTo', '==', null));
         } else {
             queryConstraints.push(where('status', '==', activeFilter));
         }
-
-        // --- FIX: Sort by creation date for more reliable querying ---
-        queryConstraints.push(orderBy('createdAt', 'desc'));
 
         const q = query(ticketsCollectionRef, ...queryConstraints);
 
         const unsubscribe = onSnapshot(q, (querySnapshot) => {
             setTickets(querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
             setLoadingTickets(false);
-        }, (error) => {
-            console.error("Firestore query failed. This might be due to a missing index. Please check the Firestore console.", error);
-            setLoadingTickets(false);
         });
 
-        const fetchStaff = async () => {
+        const fetchServerData = async () => {
             try {
-                const response = await fetch(`/api/get-staff?guildId=${selectedServer.id}`);
+                const response = await fetch(`/api/get-server-data?guildId=${selectedServer.id}`);
                 const data = await response.json();
-                if (response.ok) setStaffMembers(data);
-                else console.error("Failed to fetch staff:", data.error);
+                if (response.ok) setServerData(data);
+                else console.error("Failed to fetch server data:", data.error);
             } catch (error) {
-                console.error("Error fetching staff:", error);
+                console.error("Error fetching server data:", error);
             }
         };
-        fetchStaff();
+        fetchServerData();
 
         return () => unsubscribe();
     }, [selectedServer, activeFilter, user.id]);
@@ -114,7 +105,7 @@ export default function Dashboard({ user, authorizedGuilds }) {
                         <p className="text-neutral-500 mt-2">Choose a server from the sidebar to view its tickets.</p>
                     </div>
                 ) : selectedTicket ? (
-                    <TicketView ticket={selectedTicket} onBack={showTicketList} user={user} staffMembers={staffMembers} />
+                    <TicketView ticket={selectedTicket} onBack={showTicketList} user={user} serverData={serverData} />
                 ) : (
                     <div>
                         <div className="flex flex-col md:flex-row justify-between md:items-center mb-6 gap-4">
@@ -131,8 +122,8 @@ export default function Dashboard({ user, authorizedGuilds }) {
                                         <button onClick={() => setActiveFilter('unassigned')} className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${activeFilter === 'unassigned' ? 'bg-neutral-700 shadow-sm' : 'hover:bg-neutral-700/50 text-neutral-400'}`}>Unassigned</button>
                                     </div>
                                     <div className="flex space-x-1 bg-neutral-800/80 p-1 rounded-lg">
-                                        <button onClick={() => setActiveFilter('resolved')} className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${activeFilter === 'resolved' ? 'bg-green-700 shadow-sm' : 'hover:bg-green-700/50 text-neutral-400'}`}>Resolved</button>
-                                        <button onClick={() => setActiveFilter('closed')} className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${activeFilter === 'closed' ? 'bg-red-700 shadow-sm' : 'hover:bg-red-700/50 text-neutral-400'}`}>Closed</button>
+                                        <button onClick={() => setActiveFilter('resolved')} className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${activeFilter === 'resolved' ? 'bg-neutral-700 shadow-sm' : 'hover:bg-neutral-700/50 text-neutral-400'}`}>Resolved</button>
+                                        <button onClick={() => setActiveFilter('closed')} className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${activeFilter === 'closed' ? 'bg-neutral-700 shadow-sm' : 'hover:bg-neutral-700/50 text-neutral-400'}`}>Closed</button>
                                     </div>
                                 </div>
                             </div>
@@ -211,8 +202,8 @@ export async function getServerSideProps(context) {
     const guildsToCheckRoles = [];
     const authorizedGuilds = userGuilds.filter(guild => {
         if (!serverConfigs.has(guild.id)) return false;
-        if (guild.permissions && (BigInt(guild.permissions) & BigInt(0x8)) === BigInt(0x8)) return true;
         if (guild.owner) return true;
+        if (guild.permissions && (BigInt(guild.permissions) & BigInt(0x8)) === BigInt(0x8)) return true;
         guildsToCheckRoles.push(guild);
         return false;
     });
